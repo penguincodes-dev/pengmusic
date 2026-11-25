@@ -11,15 +11,34 @@ from PySide6.QtWidgets import (
 )
 
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
-from PySide6.QtCore import QUrl, Qt
+from PySide6.QtCore import QUrl, Qt, QTimer, QSignalBlocker
 
+import subprocess
 
 # Stores the paths of imported music files
 music_library = []
+current_index = 0
+def next_music(media):
+    global current_index 
+    if not music_library:
+        return
+    current_index += 1
+    current_index %= len(music_library)
+    file_path = music_library[current_index]
+    song_url = QUrl.fromLocalFile(file_path)
+    media.setSource(song_url)
+    media.play()
 
-
-
-
+def previous_music(media):
+    global current_index
+    if not music_library:
+        return
+    current_index -= 1
+    current_index %= len(music_library)
+    file_path = music_library[current_index]
+    song_url = QUrl.fromLocalFile(file_path)
+    media.setSource(song_url)
+    media.play()
 
 
 
@@ -33,7 +52,7 @@ def play_music(media):
 
     if media.source().isEmpty():
         # Get the first song from the library
-        file_path = music_library[0]
+        file_path = music_library[current_index]
 
         # Convert the file path into a Qt URL
         song_url = QUrl.fromLocalFile(file_path)
@@ -66,7 +85,31 @@ def pause_music(media):
     media.pause()
 
 
+def seek_volume(volume):
+    subprocess.run([
+        "wpctl",
+        "set-volume",
+        "@DEFAULT_AUDIO_SINK@",
+        f"{volume}%"
+    ])
 
+def get_system_volume():
+    result = subprocess.run(
+        ["wpctl", "get-volume", "@DEFAULT_AUDIO_SINK@"],
+        capture_output=True,
+        text=True
+    )
+
+    volume = float(result.stdout.split()[1])
+    return round(volume * 100)
+
+def sync_system_volume(slider):
+    volume = get_system_volume()
+
+    if slider.value() != volume:
+        blocker = QSignalBlocker(slider)
+        slider.setValue(volume)
+        del blocker
 
 
 
@@ -128,7 +171,26 @@ def main():
     layout.addWidget(subtitle_label)
 
 
-    # PROGRESS BAR SLIDEr
+    # VOLUME SLIDER
+
+    volume_slider = QSlider(Qt.Orientation.Vertical)
+    volume_slider.setRange(0, 100)
+
+    volume_slider.setValue(get_system_volume())
+
+    layout.addWidget(volume_slider)
+
+    volume_slider.valueChanged.connect(seek_volume)
+
+    volume_timer = QTimer()
+
+    volume_timer.timeout.connect(
+        lambda: sync_system_volume(volume_slider)
+    )
+
+    volume_timer.start(10)
+
+    # PROGRESS SLIDER
 
 
 
@@ -151,22 +213,31 @@ def main():
 
 
 
-
-
-
-
     # PLAYBACK CONTROLS
+
+    play_previous_button = QPushButton("<")
+    play_previous_button.clicked.connect(lambda: previous_music(media))
+
+
     play_button = QPushButton("▶")
 
     # Pass the media object to the playback function
     play_button.clicked.connect(lambda: play_music(media))
 
+
+    play_next_button = QPushButton(">") 
+    play_next_button.clicked.connect(lambda: next_music(media))
+
+    
     pause_button = QPushButton("⏸")
     pause_button.clicked.connect(lambda: pause_music(media))
 
     shuffle_button = QPushButton("⇄")
 
+    layout.addWidget(play_previous_button)
     layout.addWidget(play_button)
+    layout.addWidget(play_next_button)
+
     layout.addWidget(pause_button)
     layout.addWidget(shuffle_button)
 
