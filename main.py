@@ -44,8 +44,12 @@ def next_music(media, track_label):
     next_scheduled = False
     if not music_library:
         return
-    current_index += 1
-    current_index %= len(music_library)
+    
+    if is_shuffled:
+        current_index = random.randint(0, len(music_library) - 1)
+    else:
+        current_index += 1
+        current_index %= len(music_library)
     file_path = music_library[current_index]
     song_url = QUrl.fromLocalFile(file_path)
     track_label.setText(get_title(file_path))
