@@ -13,23 +13,46 @@ from PySide6.QtWidgets import (
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PySide6.QtCore import QUrl, Qt, QTimer, QSignalBlocker
 
-import subprocess
+import subprocess, os, random
+
+from mutagen import File
 
 # Stores the paths of imported music files
 music_library = []
 current_index = 0
-def next_music(media):
+
+next_scheduled = False
+is_shuffled = False
+
+def toggle_shuffle():
+    global is_shuffled
+    is_shuffled = not is_shuffled
+# Get title func
+
+def get_title(file_path):
+    file = File(file_path)
+
+    if file is not None and file.get("TIT2"):
+        return str(file.get("TIT2"))
+    else: 
+        return str(os.path.splitext(os.path.basename(file_path)))[0]
+
+
+def next_music(media, track_label):
     global current_index 
+    global next_scheduled
+    next_scheduled = False
     if not music_library:
         return
     current_index += 1
     current_index %= len(music_library)
     file_path = music_library[current_index]
     song_url = QUrl.fromLocalFile(file_path)
+    track_label.setText(get_title(file_path))
     media.setSource(song_url)
     media.play()
 
-def previous_music(media):
+def previous_music(media, track_label):
     global current_index
     if not music_library:
         return
@@ -37,13 +60,12 @@ def previous_music(media):
     current_index %= len(music_library)
     file_path = music_library[current_index]
     song_url = QUrl.fromLocalFile(file_path)
+    track_label.setText(get_title(file_path))
     media.setSource(song_url)
     media.play()
 
-
-
 # PLAY MUSIC
-def play_music(media):
+def play_music(media, track_label):
 
     # Check whether the library is empty
     if not music_library:
@@ -56,34 +78,31 @@ def play_music(media):
 
         # Convert the file path into a Qt URL
         song_url = QUrl.fromLocalFile(file_path)
+        track_label.setText(get_title(file_path))
         # Set the selected song as the player's source
         media.setSource(song_url)
 
     # Start playback
     media.play()
 
-
-
-
-
-
-def update_progress(media, slider):
+def update_progress(media, slider, track_label):
+    global next_scheduled
     song_time_stamp = media.position()
     song_duration = media.duration()
     slider.setRange(0, song_duration)
     slider.setMaximum(song_duration)
     slider.setValue(song_time_stamp)
+    if song_time_stamp == song_duration and song_duration > 0 and not next_scheduled:
+        next_scheduled = True
+        QTimer.singleShot(2000, lambda: next_music(media, track_label))
 
 def seek_music(media, position):
     media.setPosition(position)
-
-
 
 # PAUSE MUSIC
 def pause_music(media):
     print("Pause button clicked!")
     media.pause()
-
 
 def seek_volume(volume):
     subprocess.run([
@@ -111,11 +130,8 @@ def sync_system_volume(slider):
         slider.setValue(volume)
         del blocker
 
-
-
 # ADD MUSIC
-def add_music():
-
+def add_music(playlist_container, media, track_label, playlist_container_label):
     # Open a file dialog and get selected file paths
     file_paths, selected_filter = QFileDialog.getOpenFileNames()
 
@@ -135,7 +151,35 @@ def add_music():
 
     # Display the total number of songs
     print(f"Library contains {len(music_library)} songs")
+    music_playlist(playlist_container, media, track_label, playlist_container_label)
 
+
+def play_certain_music(file_path, media, track_label):
+    global current_index
+    current_index = music_library.index(file_path)
+    song_url = QUrl.fromLocalFile(file_path)
+    media.setSource(song_url)
+    track_label.setText(get_title(file_path))
+    media.play()
+
+
+# Music tracks
+
+def music_playlist(playlist_container, media, track_label, playlist_container_label):
+    while playlist_container.layout().count() > 0:
+        item = playlist_container.layout().takeAt(0)
+        widget = item.widget()
+        if widget is not None:
+            widget.deleteLater()
+
+    playlist_container_label = QLabel("Tracks")
+    playlist_container.layout().addWidget(playlist_container_label)
+    for music in music_library:
+        music_button = QPushButton(f"{get_title(music)}")
+        music_button.setProperty("file_path", music)
+        file_path = music_button.property("file_path")
+        music_button.clicked.connect(lambda checked=False, file_path=file_path: play_certain_music(file_path, media, track_label))
+        playlist_container.layout().addWidget(music_button)
 
 # MAIN APPLICATION
 def main():
@@ -155,20 +199,27 @@ def main():
     window = QWidget()
     layout = QVBoxLayout()
 
-
-
-
-
-
-
-
-
     # LABELS
     title_label = QLabel("Penguin Music")
     subtitle_label = QLabel("Free. Open Source. Hyprland + Arch")
 
     layout.addWidget(title_label)
     layout.addWidget(subtitle_label)
+
+    # track label
+    track_label = QLabel("")
+
+    # Music Playlist
+
+    playlist_container = QWidget()
+    playlist_container.setLayout(QVBoxLayout())
+
+    playlist_container_label = QLabel("Tracks")
+    playlist_container.layout().addWidget(playlist_container_label)
+
+    music_playlist(playlist_container, media, track_label, playlist_container_label)
+
+    layout.addWidget(playlist_container)
 
 
     # VOLUME SLIDER
@@ -188,11 +239,13 @@ def main():
         lambda: sync_system_volume(volume_slider)
     )
 
-    volume_timer.start(10)
+    volume_timer.start(100)
+
+    # TRACK LABEL
+
+    layout.addWidget(track_label)
 
     # PROGRESS SLIDER
-
-
 
     slider = QSlider(Qt.Orientation.Horizontal)
     layout.addWidget(slider)
@@ -205,35 +258,31 @@ def main():
     # layout.addWidget(progress_bar)
 
     media.positionChanged.connect(
-        lambda position: update_progress(media, slider)
+        lambda position: update_progress(media, slider, track_label)
     )
-
-
-
-
-
 
     # PLAYBACK CONTROLS
 
     play_previous_button = QPushButton("<")
-    play_previous_button.clicked.connect(lambda: previous_music(media))
+    play_previous_button.clicked.connect(lambda: previous_music(media, track_label))
 
 
     play_button = QPushButton("▶")
 
     # Pass the media object to the playback function
-    play_button.clicked.connect(lambda: play_music(media))
+    play_button.clicked.connect(lambda: play_music(media, track_label))
 
 
     play_next_button = QPushButton(">") 
-    play_next_button.clicked.connect(lambda: next_music(media))
+    play_next_button.clicked.connect(lambda: next_music(media, track_label))
 
     
     pause_button = QPushButton("⏸")
     pause_button.clicked.connect(lambda: pause_music(media))
 
     shuffle_button = QPushButton("⇄")
-
+    shuffle_button.clicked.connect(toggle_shuffle)
+    
     layout.addWidget(play_previous_button)
     layout.addWidget(play_button)
     layout.addWidget(play_next_button)
@@ -241,31 +290,13 @@ def main():
     layout.addWidget(pause_button)
     layout.addWidget(shuffle_button)
 
-
-    
-
-
-
-
-
-
     # ADD MUSIC BUTTON
     add_music_button = QPushButton("+ Add music")
-    add_music_button.clicked.connect(add_music)
+    add_music_button.clicked.connect(
+        lambda: add_music(playlist_container, media, track_label,playlist_container_label)
+    )
 
     layout.addWidget(add_music_button)
-
-
-
-
-
-
-
-
-
-
-
-
 
     # CONFIGURE THE WINDOW
     window.setWindowTitle("Penguin Music")
@@ -276,7 +307,6 @@ def main():
 
     # Start the Qt event loop
     app.exec()
-
 
 # Run main() only when this file is executed directly
 if __name__ == "__main__":
