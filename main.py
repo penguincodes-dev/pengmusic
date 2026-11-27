@@ -19,14 +19,52 @@ from mutagen import File
 
 # Stores the paths of imported music files
 music_library = []
+shuffled_library = []
+
 current_index = 0
+shuffled_index = 0
 
 next_scheduled = False
 is_shuffled = False
 
-def toggle_shuffle():
+
+def toggle_shuffle(media, track_label):
+    global shuffled_index
     global is_shuffled
+
     is_shuffled = not is_shuffled
+
+    if is_shuffled:
+        media.pause()
+        media.setSource(QUrl())
+        shuffle_library()
+        shuffled_index = 0
+        random_songs(media, track_label)
+
+def shuffle_library():  
+    global shuffled_library
+    if is_shuffled == True:
+        shuffled_library = music_library.copy()
+        random.shuffle(shuffled_library)
+    return shuffled_library
+    
+
+def random_songs(media, track_label):
+    # 1. Stop the current song
+    # 2. Shuffle the music library
+    # 3. Play the first music from the library, Continue
+    # 4. Finish the last song shuffle again.
+    global shuffled_library
+
+
+    if media.source().isEmpty():
+        file_path = shuffled_library[shuffled_index]
+        song_url = QUrl.fromLocalFile(file_path)
+        track_label.setText(get_title(file_path))
+        media.setSource(song_url)
+        media.play()
+
+    
 # Get title func
 
 def get_title(file_path):
@@ -35,38 +73,77 @@ def get_title(file_path):
     if file is not None and file.get("TIT2"):
         return str(file.get("TIT2"))
     else: 
-        return str(os.path.splitext(os.path.basename(file_path)))[0]
+        return os.path.splitext(os.path.basename(file_path))[0]
 
 
 def next_music(media, track_label):
     global current_index 
+    global is_shuffled
+    global shuffled_index
     global next_scheduled
-    next_scheduled = False
-    if not music_library:
-        return
-    
+    global shuffled_library
+
     if is_shuffled:
-        current_index = random.randint(0, len(music_library) - 1)
+        if not music_library:
+            return
+        elif not shuffled_library:
+            return
+        else:
+
+            if shuffled_index == len(shuffled_library) - 1:
+                shuffled_library = shuffle_library() 
+                shuffled_index = 0
+            else:
+                shuffled_index += 1
+                shuffled_index %= len(shuffled_library)
+
+        file_path = shuffled_library[shuffled_index]
+        song_url = QUrl.fromLocalFile(file_path)
+        track_label.setText(get_title(file_path))
+        media.setSource(song_url)
+        media.play()
+
     else:
-        current_index += 1
-        current_index %= len(music_library)
-    file_path = music_library[current_index]
-    song_url = QUrl.fromLocalFile(file_path)
-    track_label.setText(get_title(file_path))
-    media.setSource(song_url)
-    media.play()
+        if not music_library:
+            return
+        else:
+            current_index += 1
+            current_index %= len(music_library)
+        file_path = music_library[current_index]
+        song_url = QUrl.fromLocalFile(file_path)
+        track_label.setText(get_title(file_path))
+        media.setSource(song_url)
+        media.play()
 
 def previous_music(media, track_label):
     global current_index
-    if not music_library:
-        return
-    current_index -= 1
-    current_index %= len(music_library)
-    file_path = music_library[current_index]
-    song_url = QUrl.fromLocalFile(file_path)
-    track_label.setText(get_title(file_path))
-    media.setSource(song_url)
-    media.play()
+    global is_shuffled
+    global shuffled_index
+
+    if is_shuffled:
+        if not music_library:
+            return
+        elif not shuffled_library:
+            return
+        else:
+            shuffled_index -= 1
+            shuffled_index %= len(shuffled_library)
+            file_path = shuffled_library[shuffled_index]
+            song_url = QUrl.fromLocalFile(file_path)
+            track_label.setText(get_title(file_path))
+            media.setSource(song_url)
+            media.play()
+
+    else:
+        if not music_library:
+            return
+        current_index -= 1
+        current_index %= len(music_library)
+        file_path = music_library[current_index]
+        song_url = QUrl.fromLocalFile(file_path)
+        track_label.setText(get_title(file_path))
+        media.setSource(song_url)
+        media.play()
 
 # PLAY MUSIC
 def play_music(media, track_label):
@@ -285,7 +362,9 @@ def main():
     pause_button.clicked.connect(lambda: pause_music(media))
 
     shuffle_button = QPushButton("⇄")
-    shuffle_button.clicked.connect(toggle_shuffle)
+    shuffle_button.clicked.connect(
+        lambda checked=False: toggle_shuffle(media, track_label)
+        )
     
     layout.addWidget(play_previous_button)
     layout.addWidget(play_button)
