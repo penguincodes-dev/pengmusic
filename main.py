@@ -40,7 +40,7 @@ def toggle_shuffle(media, track_label):
         shuffle_library()
         shuffled_index = 0
         random_songs(media, track_label)
-
+#  Shuffling library
 def shuffle_library():  
     global shuffled_library
     if is_shuffled == True:
@@ -86,10 +86,7 @@ def next_music(media, track_label):
     if is_shuffled:
         if not music_library:
             return
-        elif not shuffled_library:
-            return
         else:
-
             if shuffled_index == len(shuffled_library) - 1:
                 shuffled_library = shuffle_library() 
                 shuffled_index = 0
@@ -122,8 +119,6 @@ def previous_music(media, track_label):
 
     if is_shuffled:
         if not music_library:
-            return
-        elif not shuffled_library:
             return
         else:
             shuffled_index -= 1
